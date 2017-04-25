@@ -18,6 +18,7 @@ ENABLE_LIBYOSYS := 0
 # other configuration flags
 ENABLE_GPROF := 0
 ENABLE_NDEBUG := 0
+LINK_CURSES := 0
 
 # clang sanitizers
 SANITIZER =
@@ -44,35 +45,46 @@ TARGETS = yosys$(EXE) yosys-config
 PRETTY = 1
 SMALL = 0
 
+# Unit test
+UNITESTPATH := tests/unit
+
 all: top-all
 
 YOSYS_SRC := $(dir $(firstword $(MAKEFILE_LIST)))
 VPATH := $(YOSYS_SRC)
 
-CXXFLAGS += -Wall -Wextra -ggdb -I. -I"$(YOSYS_SRC)" -MD -D_YOSYS_ -fPIC -I$(PREFIX)/include
-LDFLAGS += -L$(LIBDIR)
-LDLIBS = -lstdc++ -lm
+CXXFLAGS := $(CXXFLAGS) -Wall -Wextra -ggdb -I. -I"$(YOSYS_SRC)" -MD -D_YOSYS_ -fPIC -I$(PREFIX)/include
+LDFLAGS := $(LDFLAGS) -L$(LIBDIR)
+LDLIBS := $(LDLIBS) -lstdc++ -lm
 
-PKG_CONFIG = pkg-config
-SED = sed
-BISON = bison
+PKG_CONFIG ?= pkg-config
+SED ?= sed
+BISON ?= bison
 
 ifeq (Darwin,$(findstring Darwin,$(shell uname)))
-	# add macports/homebrew include and library path to search directories, don't use '-rdynamic' and '-lrt':
-	CXXFLAGS += -I/opt/local/include -I/usr/local/opt/readline/include
-	LDFLAGS += -L/opt/local/lib -L/usr/local/opt/readline/lib
-	# add homebrew's libffi include and library path
-	CXXFLAGS += $(shell PKG_CONFIG_PATH=$$(brew list libffi | grep pkgconfig | xargs dirname) pkg-config --silence-errors --cflags libffi)
-	LDFLAGS += $(shell PKG_CONFIG_PATH=$$(brew list libffi | grep pkgconfig | xargs dirname) pkg-config --silence-errors --libs libffi)
-	# use bison installed by homebrew if available
-	BISON = $(shell (brew list bison | grep -m1 "bin/bison") || echo bison)
-	SED = sed
+# homebrew search paths
+ifneq ($(shell which brew),)
+BREW_PREFIX := $(shell brew --prefix)/opt
+CXXFLAGS += -I$(BREW_PREFIX)/readline/include
+LDFLAGS += -L$(BREW_PREFIX)/readline/lib
+PKG_CONFIG_PATH := $(BREW_PREFIX)/libffi/lib/pkgconfig:$(PKG_CONFIG_PATH)
+PKG_CONFIG_PATH := $(BREW_PREFIX)/tcl-tk/lib/pkgconfig:$(PKG_CONFIG_PATH)
+export PATH := $(BREW_PREFIX)/bison/bin:$(BREW_PREFIX)/gettext/bin:$(BREW_PREFIX)/flex/bin:$(PATH)
+
+# macports search paths
+else ifneq ($(shell which port),)
+PORT_PREFIX := $(patsubst %/bin/port,%,$(shell which port))
+CXXFLAGS += -I$(PORT_PREFIX)/include
+LDFLAGS += -L$(PORT_PREFIX)/lib
+PKG_CONFIG_PATH := $(PORT_PREFIX)/lib/pkgconfig:$(PKG_CONFIG_PATH)
+export PATH := $(PORT_PREFIX)/bin:$(PATH)
+endif
 else
-	LDFLAGS += -rdynamic
-	LDLIBS += -lrt
+LDFLAGS += -rdynamic
+LDLIBS += -lrt
 endif
 
-YOSYS_VER := 0.6+$(shell test -e .git && { git log --author=clifford@clifford.at --oneline 5869d26da021.. | wc -l; })
+YOSYS_VER := 0.7+$(shell cd $(YOSYS_SRC) && test -e .git && { git log --author=clifford@clifford.at --oneline 61f6811.. | wc -l; })
 GIT_REV := $(shell cd $(YOSYS_SRC) && git rev-parse --short HEAD 2> /dev/null || echo UNKNOWN)
 OBJS = kernel/version_$(GIT_REV).o
 
@@ -82,14 +94,14 @@ OBJS = kernel/version_$(GIT_REV).o
 # is just a symlink to your actual ABC working directory, as 'make mrproper'
 # will remove the 'abc' directory and you do not want to accidentally
 # delete your work on ABC..
-ABCREV = 8e08604f8ad3
+ABCREV = 3a95bfa55df7
 ABCPULL = 1
 ABCURL ?= https://bitbucket.org/alanmi/abc
 ABCMKARGS = CC="$(CXX)" CXX="$(CXX)"
 
 # set ABCEXTERNAL = <abc-command> to use an external ABC instance
 # Note: The in-tree ABC (yosys-abc) will not be installed when ABCEXTERNAL is set.
-ABCEXTERNAL =
+ABCEXTERNAL ?=
 
 define newline
 
@@ -170,7 +182,7 @@ CXXFLAGS += -std=c++11 -Os -D_POSIX_SOURCE
 CXXFLAGS := $(filter-out -fPIC,$(CXXFLAGS))
 LDFLAGS := $(filter-out -rdynamic,$(LDFLAGS)) -s
 LDLIBS := $(filter-out -lrt,$(LDLIBS))
-ABCMKARGS += ARCHFLAGS="-DSIZEOF_VOID_P=4 -DSIZEOF_LONG=4 -DSIZEOF_INT=4 -DWIN32_NO_DLL -DHAVE_STRUCT_TIMESPEC -x c++ -fpermissive -w"
+ABCMKARGS += ARCHFLAGS="-DSIZEOF_VOID_P=4 -DSIZEOF_LONG=4 -DSIZEOF_INT=4 -DWIN32_NO_DLL -DHAVE_STRUCT_TIMESPEC -fpermissive -w"
 ABCMKARGS += LIBS="lib/x86/pthreadVC2.lib -s" ABC_USE_NO_READLINE=1 CC="$(CXX)" CXX="$(CXX)"
 EXE = .exe
 
@@ -181,7 +193,7 @@ CXXFLAGS += -std=c++11 -Os -D_POSIX_SOURCE -DYOSYS_WIN32_UNIX_DIR
 CXXFLAGS := $(filter-out -fPIC,$(CXXFLAGS))
 LDFLAGS := $(filter-out -rdynamic,$(LDFLAGS)) -s
 LDLIBS := $(filter-out -lrt,$(LDLIBS))
-ABCMKARGS += ARCHFLAGS="-DSIZEOF_VOID_P=4 -DSIZEOF_LONG=4 -DSIZEOF_INT=4 -DWIN32_NO_DLL -DHAVE_STRUCT_TIMESPEC -x c++ -fpermissive -w"
+ABCMKARGS += ARCHFLAGS="-DSIZEOF_VOID_P=4 -DSIZEOF_LONG=4 -DSIZEOF_INT=4 -DWIN32_NO_DLL -DHAVE_STRUCT_TIMESPEC -fpermissive -w"
 ABCMKARGS += LIBS="lib/x86/pthreadVC2.lib -s" ABC_USE_NO_READLINE=0 CC="$(CXX)" CXX="$(CXX)"
 EXE = .exe
 
@@ -196,21 +208,26 @@ endif
 ifeq ($(ENABLE_READLINE),1)
 CXXFLAGS += -DYOSYS_ENABLE_READLINE
 LDLIBS += -lreadline
+ifeq ($(LINK_CURSES),1)
+LDLIBS += -lcurses
+ABCMKARGS += "ABC_READLINE_LIBRARIES=-lcurses -lreadline"
+endif
 ifeq ($(CONFIG),mxe)
 LDLIBS += -lpdcurses
 endif
 endif
 
 ifeq ($(ENABLE_PLUGINS),1)
-CXXFLAGS += -DYOSYS_ENABLE_PLUGINS $(shell $(PKG_CONFIG) --silence-errors --cflags libffi)
-LDLIBS += $(shell $(PKG_CONFIG) --silence-errors --libs libffi || echo -lffi) -ldl
+CXXFLAGS += $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) $(PKG_CONFIG) --silence-errors --cflags libffi) -DYOSYS_ENABLE_PLUGINS
+LDLIBS += $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) $(PKG_CONFIG) --silence-errors --libs libffi || echo -lffi) -ldl
 endif
 
 ifeq ($(ENABLE_TCL),1)
 TCL_VERSION ?= tcl$(shell bash -c "tclsh <(echo 'puts [info tclversion]')")
 TCL_INCLUDE ?= /usr/include/$(TCL_VERSION)
-CXXFLAGS += -I$(TCL_INCLUDE) -DYOSYS_ENABLE_TCL
-LDLIBS += -l$(TCL_VERSION)
+
+CXXFLAGS += $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) $(PKG_CONFIG) --silence-errors --cflags tcl || echo -I$(TCL_INCLUDE)) -DYOSYS_ENABLE_TCL
+LDLIBS += $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) $(PKG_CONFIG) --silence-errors --libs tcl || echo -l$(TCL_VERSION))
 endif
 
 ifeq ($(ENABLE_GPROF),1)
@@ -370,10 +387,12 @@ libyosys.so: $(filter-out kernel/driver.o,$(OBJS))
 	$(Q) mkdir -p $(dir $@)
 	$(P) $(CXX) -o $@ -c $(CPPFLAGS) $(CXXFLAGS) $<
 
+YOSYS_VER_STR := Yosys $(YOSYS_VER) (git sha1 $(GIT_REV), $(notdir $(CXX)) $(shell \
+		$(CXX) --version | tr ' ()' '\n' | grep '^[0-9]' | head -n1) $(filter -f% -m% -O% -DNDEBUG,$(CXXFLAGS)))
+
 kernel/version_$(GIT_REV).cc: $(YOSYS_SRC)/Makefile
 	$(P) rm -f kernel/version_*.o kernel/version_*.d kernel/version_*.cc
-	$(Q) mkdir -p kernel && echo "namespace Yosys { extern const char *yosys_version_str; const char *yosys_version_str=\"Yosys $(YOSYS_VER) (git sha1 $(GIT_REV), $(notdir $(CXX)) ` \
-			$(CXX) --version | tr ' ()' '\n' | grep '^[0-9]' | head -n1` $(filter -f% -m% -O% -DNDEBUG,$(CXXFLAGS)))\"; }" > kernel/version_$(GIT_REV).cc
+	$(Q) mkdir -p kernel && echo "namespace Yosys { extern const char *yosys_version_str; const char *yosys_version_str=\"$(YOSYS_VER_STR)\"; }" > kernel/version_$(GIT_REV).cc
 
 yosys-config: misc/yosys-config.in
 	$(P) $(SED) -e 's#@CXXFLAGS@#$(subst -I. -I"$(YOSYS_SRC)",-I"$(DATDIR)/include",$(CXXFLAGS))#;' \
@@ -404,16 +423,22 @@ endif
 yosys-abc$(EXE): abc/abc-$(ABCREV)$(EXE)
 	$(P) cp abc/abc-$(ABCREV)$(EXE) yosys-abc$(EXE)
 
+ifneq ($(SEED),)
+SEEDOPT="-S $(SEED)"
+else
+SEEDOPT=""
+endif
+
 test: $(TARGETS) $(EXTRA_TARGETS)
-	+cd tests/simple && bash run-test.sh
-	+cd tests/hana && bash run-test.sh
-	+cd tests/asicworld && bash run-test.sh
-	+cd tests/realmath && bash run-test.sh
-	+cd tests/share && bash run-test.sh
-	+cd tests/fsm && bash run-test.sh
+	+cd tests/simple && bash run-test.sh $(SEEDOPT)
+	+cd tests/hana && bash run-test.sh $(SEEDOPT)
+	+cd tests/asicworld && bash run-test.sh $(SEEDOPT)
+	+cd tests/realmath && bash run-test.sh $(SEEDOPT)
+	+cd tests/share && bash run-test.sh $(SEEDOPT)
+	+cd tests/fsm && bash run-test.sh $(SEEDOPT)
 	+cd tests/techmap && bash run-test.sh
-	+cd tests/memories && bash run-test.sh
-	+cd tests/bram && bash run-test.sh
+	+cd tests/memories && bash run-test.sh $(SEEDOPT)
+	+cd tests/bram && bash run-test.sh $(SEEDOPT)
 	+cd tests/various && bash run-test.sh
 	+cd tests/sat && bash run-test.sh
 	@echo ""
@@ -434,6 +459,14 @@ vloghtb: $(TARGETS) $(EXTRA_TARGETS)
 	@echo "  Passed \"make vloghtb\"."
 	@echo ""
 
+# Unit test
+unit-test: libyosys.so
+	@$(MAKE) -C $(UNITESTPATH) CXX="$(CXX)" CPPFLAGS="$(CPPFLAGS)" \
+		CXXFLAGS="$(CXXFLAGS)" LDLIBS="$(LDLIBS)" ROOTPATH="$(CURDIR)"
+
+clean-unit-test:
+	@$(MAKE) -C $(UNITESTPATH) clean
+
 install: $(TARGETS) $(EXTRA_TARGETS)
 	$(INSTALL_SUDO) mkdir -p $(DESTDIR)$(BINDIR)
 	$(INSTALL_SUDO) install $(TARGETS) $(DESTDIR)$(BINDIR)
@@ -445,7 +478,7 @@ ifeq ($(ENABLE_LIBYOSYS),1)
 endif
 
 uninstall:
-	$(INSTALL_SUDO) rm -vf $(addprefix $(DESTDIR)$(BINDIR),$(notdir $(TARGETS)))
+	$(INSTALL_SUDO) rm -vf $(addprefix $(DESTDIR)$(BINDIR)/,$(notdir $(TARGETS)))
 	$(INSTALL_SUDO) rm -rvf $(DESTDIR)$(DATDIR)
 ifeq ($(ENABLE_LIBYOSYS),1)
 	$(INSTALL_SUDO) rm -vf $(DESTDIR)$(LIBDIR)/libyosys.so

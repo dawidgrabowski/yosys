@@ -42,7 +42,8 @@ namespace RTLIL
 		STn = 3, // edge sensitive: negedge
 		STe = 4, // edge sensitive: both edges
 		STa = 5, // always active
-		STi = 6  // init
+		STg = 6, // global clock
+		STi = 7  // init
 	};
 
 	enum ConstFlags : unsigned char {
@@ -792,7 +793,8 @@ struct RTLIL::Design
 
 	int refcount_modules_;
 	dict<RTLIL::IdString, RTLIL::Module*> modules_;
-	std::vector<AST::AstNode*> verilog_packages;
+	std::vector<AST::AstNode*> verilog_packages, verilog_globals;
+	dict<std::string, std::pair<std::string, bool>> verilog_defines;
 
 	std::vector<RTLIL::Selection> selection_stack;
 	dict<RTLIL::IdString, RTLIL::Selection> selection_vars;
@@ -1005,9 +1007,13 @@ public:
 	RTLIL::Cell* addTribuf (RTLIL::IdString name, RTLIL::SigSpec sig_a, RTLIL::SigSpec sig_en, RTLIL::SigSpec sig_y);
 	RTLIL::Cell* addAssert (RTLIL::IdString name, RTLIL::SigSpec sig_a, RTLIL::SigSpec sig_en);
 	RTLIL::Cell* addAssume (RTLIL::IdString name, RTLIL::SigSpec sig_a, RTLIL::SigSpec sig_en);
+	RTLIL::Cell* addLive   (RTLIL::IdString name, RTLIL::SigSpec sig_a, RTLIL::SigSpec sig_en);
+	RTLIL::Cell* addFair   (RTLIL::IdString name, RTLIL::SigSpec sig_a, RTLIL::SigSpec sig_en);
+	RTLIL::Cell* addCover  (RTLIL::IdString name, RTLIL::SigSpec sig_a, RTLIL::SigSpec sig_en);
 	RTLIL::Cell* addEquiv  (RTLIL::IdString name, RTLIL::SigSpec sig_a, RTLIL::SigSpec sig_b, RTLIL::SigSpec sig_y);
 
 	RTLIL::Cell* addSr    (RTLIL::IdString name, RTLIL::SigSpec sig_set, RTLIL::SigSpec sig_clr, RTLIL::SigSpec sig_q, bool set_polarity = true, bool clr_polarity = true);
+	RTLIL::Cell* addFf    (RTLIL::IdString name, RTLIL::SigSpec sig_d, RTLIL::SigSpec sig_q);
 	RTLIL::Cell* addDff   (RTLIL::IdString name, RTLIL::SigSpec sig_clk, RTLIL::SigSpec sig_d,   RTLIL::SigSpec sig_q, bool clk_polarity = true);
 	RTLIL::Cell* addDffe  (RTLIL::IdString name, RTLIL::SigSpec sig_clk, RTLIL::SigSpec sig_en,  RTLIL::SigSpec sig_d, RTLIL::SigSpec sig_q, bool clk_polarity = true, bool en_polarity = true);
 	RTLIL::Cell* addDffsr (RTLIL::IdString name, RTLIL::SigSpec sig_clk, RTLIL::SigSpec sig_set, RTLIL::SigSpec sig_clr,
@@ -1032,6 +1038,7 @@ public:
 	RTLIL::Cell* addAoi4Gate (RTLIL::IdString name, RTLIL::SigBit sig_a, RTLIL::SigBit sig_b, RTLIL::SigBit sig_c, RTLIL::SigBit sig_d, RTLIL::SigBit sig_y);
 	RTLIL::Cell* addOai4Gate (RTLIL::IdString name, RTLIL::SigBit sig_a, RTLIL::SigBit sig_b, RTLIL::SigBit sig_c, RTLIL::SigBit sig_d, RTLIL::SigBit sig_y);
 
+	RTLIL::Cell* addFfGate     (RTLIL::IdString name, RTLIL::SigSpec sig_d, RTLIL::SigSpec sig_q);
 	RTLIL::Cell* addDffGate    (RTLIL::IdString name, RTLIL::SigSpec sig_clk, RTLIL::SigSpec sig_d, RTLIL::SigSpec sig_q, bool clk_polarity = true);
 	RTLIL::Cell* addDffeGate   (RTLIL::IdString name, RTLIL::SigSpec sig_clk, RTLIL::SigSpec sig_en, RTLIL::SigSpec sig_d, RTLIL::SigSpec sig_q, bool clk_polarity = true, bool en_polarity = true);
 	RTLIL::Cell* addDffsrGate  (RTLIL::IdString name, RTLIL::SigSpec sig_clk, RTLIL::SigSpec sig_set, RTLIL::SigSpec sig_clr,
@@ -1105,6 +1112,7 @@ public:
 	RTLIL::SigBit Oai4Gate (RTLIL::IdString name, RTLIL::SigBit sig_a, RTLIL::SigBit sig_b, RTLIL::SigBit sig_c, RTLIL::SigBit sig_d);
 
 	RTLIL::SigSpec Anyconst  (RTLIL::IdString name, int width = 1);
+	RTLIL::SigSpec Anyseq    (RTLIL::IdString name, int width = 1);
 	RTLIL::SigSpec Initstate (RTLIL::IdString name);
 };
 
